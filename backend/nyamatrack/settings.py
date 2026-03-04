@@ -11,7 +11,9 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production'
 
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
+# FIXED: Proper ALLOWED_HOSTS handling
+allowed_hosts_env = os.getenv('ALLOWED_HOSTS', '*')
+ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.strip()]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -84,43 +86,31 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS - FIXED: Removed ALL trailing spaces and added proper settings
-CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOW_CREDENTIALS = True  # CRITICAL for cookies/sessions
+# CORS - Simplified for testing
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins for now
+CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5500",
     "http://127.0.0.1:5500",
-    "https://nyamatrack.netlify.app",  # FIXED: No trailing space
+    "https://nyamatrack.netlify.app",
 ]
 
-CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-CORS_ALLOW_HEADERS = [
-    'content-type',
-    'authorization',
-    'x-csrftoken',
-    'x-requested-with',
-    'accept',
-    'origin',
-    'access-control-allow-origin',
-]
-
-# CSRF_TRUSTED_ORIGINS - FIXED: No trailing spaces
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5500",
     "http://127.0.0.1:5500",
-    "https://nyamatrack.netlify.app",  # FIXED: No trailing space
+    "https://nyamatrack.netlify.app",
 ]
 
-# Session/Cookie settings - FIXED for cross-domain
-SESSION_COOKIE_SAMESITE = 'None'  # REQUIRED for cross-site requests
-CSRF_COOKIE_SAMESITE = 'None'     # REQUIRED for cross-site requests
-SESSION_COOKIE_SECURE = True      # REQUIRED for SameSite=None (HTTPS only)
-CSRF_COOKIE_SECURE = True         # REQUIRED for SameSite=None (HTTPS only)
+# Session/Cookie settings - Relaxed for testing
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 
 # REST Framework
 REST_FRAMEWORK = {
