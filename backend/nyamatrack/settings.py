@@ -9,9 +9,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production')
 
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -84,34 +84,43 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS - Fixed: Removed ALL trailing spaces
+# CORS - FIXED: Removed ALL trailing spaces and added proper settings
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = True  # CRITICAL for cookies/sessions
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://127.0.0.1:3000",  # Fixed: No trailing space
+    "http://127.0.0.1:3000",
     "http://localhost:5500",
-    "http://127.0.0.1:5500",  # Fixed: No trailing space
-    "https://nyamatrack.netlify.app"
+    "http://127.0.0.1:5500",
+    "https://nyamatrack.netlify.app",  # FIXED: No trailing space
 ]
 
 CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-CORS_ALLOW_HEADERS = ['content-type', 'authorization', 'x-csrftoken', 'x-requested-with']
-
-# CSRF_TRUSTED_ORIGINS - Fixed: Added missing origins and removed trailing spaces
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",  # Fixed: No trailing space
-    "http://localhost:5500",   # Added: Was missing!
-    "http://127.0.0.1:5500",   # Fixed: No trailing space, was missing!
-    "https://nyamatrack.netlify.app"  # Added: Was missing!
+CORS_ALLOW_HEADERS = [
+    'content-type',
+    'authorization',
+    'x-csrftoken',
+    'x-requested-with',
+    'accept',
+    'origin',
+    'access-control-allow-origin',
 ]
 
-# Session settings
-SESSION_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SAMESITE = 'Lax'
-SESSION_COOKIE_SECURE = False
-CSRF_COOKIE_SECURE = False
+# CSRF_TRUSTED_ORIGINS - FIXED: No trailing spaces
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+    "https://nyamatrack.netlify.app",  # FIXED: No trailing space
+]
+
+# Session/Cookie settings - FIXED for cross-domain
+SESSION_COOKIE_SAMESITE = 'None'  # REQUIRED for cross-site requests
+CSRF_COOKIE_SAMESITE = 'None'     # REQUIRED for cross-site requests
+SESSION_COOKIE_SECURE = True      # REQUIRED for SameSite=None (HTTPS only)
+CSRF_COOKIE_SECURE = True         # REQUIRED for SameSite=None (HTTPS only)
 
 # REST Framework
 REST_FRAMEWORK = {
