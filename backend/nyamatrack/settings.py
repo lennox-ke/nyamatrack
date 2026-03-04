@@ -92,6 +92,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",  # Fixed: No trailing space
     "http://localhost:5500",
     "http://127.0.0.1:5500",  # Fixed: No trailing space
+    "https://nyamatrack.netlify.app"
 ]
 
 CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
@@ -103,6 +104,7 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:3000",  # Fixed: No trailing space
     "http://localhost:5500",   # Added: Was missing!
     "http://127.0.0.1:5500",   # Fixed: No trailing space, was missing!
+    "https://nyamatrack.netlify.app"  # Added: Was missing!
 ]
 
 # Session settings
