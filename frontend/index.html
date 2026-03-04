@@ -1090,6 +1090,18 @@
             overflow-y: auto;
         }
 
+        /* Link styles */
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        a:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+
         /* ==================== */
         /* MOBILE OPTIMIZATIONS */
         /* ==================== */
@@ -1396,6 +1408,49 @@
             </form>
             <div style="margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-muted);">
                 <p>Demo: admin / admin123</p>
+            </div>
+            <div style="margin-top: 20px; text-align: center;">
+                <p style="font-size: 14px; color: var(--text-muted);">
+                    Don't have an account? 
+                    <a href="#" onclick="showPage('register')" style="color: var(--primary);">Create one</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Page -->
+    <div class="page" id="registerPage">
+        <div class="login-container">
+            <div class="login-box">
+                <div class="logo">
+                    <i class="fas fa-user-plus"></i>
+                    <h1>Create Account</h1>
+                    <p>Register for NyamaTrack</p>
+                </div>
+                <form id="registerForm">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="regUsername" placeholder="Choose username" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email (Optional)</label>
+                        <input type="email" id="regEmail" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="regPassword" placeholder="Create password (min 6 chars)" required minlength="6">
+                    </div>
+                    <button type="submit" class="btn" id="registerBtn">
+                        <i class="fas fa-user-plus"></i>
+                        Create Account
+                    </button>
+                </form>
+                <div style="margin-top: 20px; text-align: center;">
+                    <p style="font-size: 14px; color: var(--text-muted);">
+                        Already have an account? 
+                        <a href="#" onclick="showPage('login')" style="color: var(--primary);">Login here</a>
+                    </p>
+                </div>
             </div>
         </div>
     </div>
@@ -1839,7 +1894,7 @@
         let meatCuts = [];
         let currentStock = [];
         let currentStockFilter = 'all';
-        let currentPage = 'dashboard';
+        let currentPage = 'login';
 
         function getCookie(name) {
             let cookieValue = null;
@@ -1870,6 +1925,11 @@
             checkAuth();
             document.getElementById('loginForm').addEventListener('submit', handleLogin);
             document.getElementById('saleForm').addEventListener('submit', handleSale);
+            
+            const registerForm = document.getElementById('registerForm');
+            if (registerForm) {
+                registerForm.addEventListener('submit', handleRegister);
+            }
             
             const today = new Date().toISOString().split('T')[0];
             const reportDate = document.getElementById('reportDate');
@@ -1941,8 +2001,47 @@
             }
         }
 
+        async function handleRegister(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('registerBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="loading"></span> Creating account...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_URL}/auth/register/`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: document.getElementById('regUsername').value,
+                        password: document.getElementById('regPassword').value,
+                        email: document.getElementById('regEmail').value
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('Account created successfully!', 'success');
+                    currentUser = data.user;
+                    showApp();
+                } else {
+                    showToast(data.error || 'Registration failed', 'error');
+                }
+            } catch (error) {
+                showToast('Network error. Please try again.', 'error');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
         function showApp() {
             document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('registerPage').classList.remove('active');
             document.getElementById('mainApp').classList.add('active');
             document.getElementById('userName').textContent = currentUser.username;
             document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
@@ -1966,14 +2065,40 @@
             currentUser = null;
             document.getElementById('mainApp').classList.remove('active');
             document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('registerPage').classList.remove('active');
             showToast('Logged out successfully', 'success');
         }
 
         function showPage(pageName) {
-            if (currentPage === pageName && event?.target?.closest('.page')?.classList.contains('active')) {
+            currentPage = pageName;
+
+            // Hide all pages first
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('registerPage').classList.remove('active');
+            document.getElementById('mainApp').classList.remove('active');
+            
+            // Hide all main app pages
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+
+            if (pageName === 'login') {
+                document.getElementById('loginScreen').style.display = 'flex';
                 return;
             }
-            currentPage = pageName;
+            
+            if (pageName === 'register') {
+                document.getElementById('registerPage').classList.add('active');
+                return;
+            }
+
+            // For authenticated pages
+            if (!currentUser) {
+                document.getElementById('loginScreen').style.display = 'flex';
+                return;
+            }
+
+            document.getElementById('mainApp').classList.add('active');
 
             const sidebar = document.getElementById('sidebar');
             const overlay = document.getElementById('sidebarOverlay');
@@ -1998,9 +2123,6 @@
                 }
             });
 
-            document.querySelectorAll('.page').forEach(page => {
-                page.classList.remove('active');
-            });
             const targetPage = document.getElementById(pageName + 'Page');
             if (targetPage) {
                 targetPage.classList.add('active');
@@ -2315,7 +2437,7 @@
         }
 
         function updateAvailableStock() {
-            const cutId = document            .getElementById('saleMeatCut')?.value;
+            const cutId = document.getElementById('saleMeatCut')?.value;
             if (!cutId) {
                 const availableStock = document.getElementById('availableStock');
                 if (availableStock) availableStock.value = '';
