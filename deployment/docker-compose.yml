@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  web:
+    build: ../backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=local-dev-key-change-in-production
+      - DEBUG=True
+      - DATABASE_URL=sqlite:///db.sqlite3
+    volumes:
+      - ./data:/app/data

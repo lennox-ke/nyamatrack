@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: nyamatrack-backend
+    env: python
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    startCommand: "gunicorn nyamatrack.wsgi:application"
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nyamatrack-db
+          property: connectionString
+
+databases:
+  - name: nyamatrack-db
+    databaseName: nyamatrack
+    user: nyamatrack
