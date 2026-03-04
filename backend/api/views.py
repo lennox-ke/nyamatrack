@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta, datetime
 from decimal import Decimal, InvalidOperation
@@ -54,6 +55,61 @@ def login_view(request):
     
     return Response({'success': False, 'error': 'Invalid credentials'}, 
                    status=status.HTTP_401_UNAUTHORIZED)
+
+
+@csrf_exempt
+@api_view(['POST', 'GET'])
+@permission_classes([AllowAny])
+def register_view(request):
+    if request.method == 'GET':
+        return Response({'detail': 'Register endpoint. Send POST with username, password, email'})
+    
+    username = request.data.get('username')
+    password = request.data.get('password')
+    email = request.data.get('email', '')
+    
+    if not username or not password:
+        return Response({
+            'success': False, 
+            'error': 'Please provide username and password'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if len(password) < 6:
+        return Response({
+            'success': False,
+            'error': 'Password must be at least 6 characters'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if User.objects.filter(username=username).exists():
+        return Response({
+            'success': False,
+            'error': 'Username already exists'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password
+        )
+        
+        # Auto-login after registration
+        login(request, user)
+        
+        return Response({
+            'success': True,
+            'message': 'User created successfully',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email
+            }
+        })
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @csrf_exempt
@@ -137,7 +193,7 @@ def dashboard_data(request):
         days_left = item.days_until_expiry
         alerts.append({
             'type': 'expiring',
-            'message': f"{item.meat_cut.name} expires in {days_left} days",
+            'message': f"{alert.meat_cut.name} expires in {days_left} days",
             'severity': 'danger' if days_left <= 0 else 'warning'
         })
     
