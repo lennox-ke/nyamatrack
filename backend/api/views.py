@@ -6,7 +6,7 @@ from rest_framework import status
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.utils import timezone
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from django.db.models import Sum, Q
 from inventory.models import (
@@ -23,15 +23,34 @@ from .serializers import (
 @api_view(['POST', 'GET'])
 @permission_classes([AllowAny])
 def login_view(request):
+    """Login endpoint with debug logging"""
     if request.method == 'GET':
         return Response({'detail': 'Login endpoint. Send POST request with username and password.'})
     
-    username = request.data.get('username')
-    password = request.data.get('password')
+    # Debug logging
+    print(f"=== LOGIN ATTEMPT ===")
+    print(f"Method: {request.method}")
+    print(f"Content-Type: {request.headers.get('Content-Type', 'Not set')}")
+    print(f"Request data type: {type(request.data)}")
+    print(f"Request data: {request.data}")
+    print(f"Request body: {request.body}")
+    print(f"====================")
+    
+    try:
+        username = request.data.get('username')
+        password = request.data.get('password')
+    except Exception as e:
+        print(f"Error reading request data: {e}")
+        return Response({
+            'success': False, 
+            'error': f'Invalid request format: {str(e)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     if not username or not password:
-        return Response({'success': False, 'error': 'Please provide username and password'}, 
-                       status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'success': False, 
+            'error': 'Please provide username and password'
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     user = authenticate(request, username=username, password=password)
     
@@ -53,20 +72,34 @@ def login_view(request):
             }
         })
     
-    return Response({'success': False, 'error': 'Invalid credentials'}, 
-                   status=status.HTTP_401_UNAUTHORIZED)
+    return Response({
+        'success': False, 
+        'error': 'Invalid credentials'
+    }, status=status.HTTP_401_UNAUTHORIZED)
 
 
 @csrf_exempt
 @api_view(['POST', 'GET'])
 @permission_classes([AllowAny])
 def register_view(request):
+    """User registration endpoint"""
     if request.method == 'GET':
         return Response({'detail': 'Register endpoint. Send POST with username, password, email'})
     
-    username = request.data.get('username')
-    password = request.data.get('password')
-    email = request.data.get('email', '')
+    print(f"=== REGISTER ATTEMPT ===")
+    print(f"Request data: {request.data}")
+    print(f"========================")
+    
+    try:
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email', '')
+    except Exception as e:
+        print(f"Error reading request data: {e}")
+        return Response({
+            'success': False, 
+            'error': f'Invalid request format: {str(e)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
     
     if not username or not password:
         return Response({
@@ -93,7 +126,6 @@ def register_view(request):
             password=password
         )
         
-        # Auto-login after registration
         login(request, user)
         
         return Response({
@@ -106,6 +138,7 @@ def register_view(request):
             }
         })
     except Exception as e:
+        print(f"Registration error: {e}")
         return Response({
             'success': False,
             'error': str(e)
@@ -193,7 +226,7 @@ def dashboard_data(request):
         days_left = item.days_until_expiry
         alerts.append({
             'type': 'expiring',
-            'message': f"{alert.meat_cut.name} expires in {days_left} days",
+            'message': f"{item.meat_cut.name} expires in {days_left} days",
             'severity': 'danger' if days_left <= 0 else 'warning'
         })
     
