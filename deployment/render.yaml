@@ -3,6 +3,7 @@ services:
     name: nyamatrack-backend
     runtime: python
     plan: free
+    pythonVersion: "3.11.0"  # Alternative syntax
     buildCommand: "./build.sh"
     startCommand: "gunicorn nyamatrack.wsgi:application"
     envVars:
@@ -10,8 +11,6 @@ services:
         generateValue: true
       - key: DEBUG
         value: "False"
-      - key: PYTHON_VERSION
-        value: "3.11.0"
       - key: DATABASE_URL
         fromDatabase:
           name: nyamatrack-db
