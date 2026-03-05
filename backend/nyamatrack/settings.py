@@ -13,7 +13,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production'
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
 # FIXED: Explicitly include the Render domain and allow all hosts for now
-ALLOWED_HOSTS = ['nyamatrack-backend.onrender.com', 'localhost', '127.0.0.1', '*']
+ALLOWED_HOSTS = ['nyamatrack-backend.onrender.com', 'localhost', '127.0.0.1']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
