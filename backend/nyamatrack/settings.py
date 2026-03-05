@@ -12,9 +12,8 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production'
 
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-# FIXED: Proper ALLOWED_HOSTS handling
-allowed_hosts_env = os.getenv('ALLOWED_HOSTS', '*')
-ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.strip()]
+# FIXED: Explicitly include the Render domain and allow all hosts for now
+ALLOWED_HOSTS = ['nyamatrack-backend.onrender.com', 'localhost', '127.0.0.1', '*']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -30,7 +29,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'api.middleware.RequestLoggingMiddleware',  # ADD THIS FIRST for debugging
+    'api.middleware.RequestLoggingMiddleware',  # Debug logging
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -132,7 +131,7 @@ REST_FRAMEWORK = {
     ],
 }
 
-# Logging configuration - This will show all logs in Render
+# Logging configuration
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
