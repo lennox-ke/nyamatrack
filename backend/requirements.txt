@@ -1,6 +1,5 @@
 Django==4.2.7
 djangorestframework==3.14.0
-djangorestframework-authtoken==2.4.0  # ADD THIS LINE
 django-cors-headers==4.3.0
 python-dotenv==1.0.0
 gunicorn==21.2.0
