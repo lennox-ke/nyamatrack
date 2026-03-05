@@ -1886,1230 +1886,1232 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
-// API Configuration - NO TRAILING SPACE
-const API_URL = 'https://nyamatrack-backend.onrender.com/api';
+        // API Configuration - NO TRAILING SPACE
+        const API_URL = 'https://nyamatrack-backend.onrender.com/api';
 
-let currentUser = null;
-let authToken = null;  // Store token here
-let meatTypes = [];
-let meatCuts = [];
-let currentStock = [];
-let currentStockFilter = 'all';
-let currentPage = 'login';
+        let currentUser = null;
+        let meatTypes = [];
+        let meatCuts = [];
+        let currentStock = [];
+        let currentStockFilter = 'all';
+        let currentPage = 'login';
 
-// Helper function for API calls with token
-async function apiFetch(endpoint, options = {}) {
-    const headers = {
-        'Content-Type': 'application/json',
-        ...options.headers
-    };
-    
-    // Add authorization token if available
-    if (authToken) {
-        headers['Authorization'] = `Token ${authToken}`;
-    }
-    
-    const config = {
-        ...options,
-        headers: headers
-    };
-    
-    // Remove credentials since we're using tokens
-    // config.credentials = 'include';  // Not needed for token auth
-    
-    return fetch(`${API_URL}${endpoint}`, config);
-}
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
 
-function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    const hamburger = document.getElementById('hamburgerBtn');
-    
-    sidebar.classList.toggle('open');
-    overlay.classList.toggle('active');
-    hamburger.classList.toggle('active');
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    // Check for stored token
-    const storedToken = localStorage.getItem('authToken');
-    const storedUser = localStorage.getItem('currentUser');
-    
-    if (storedToken && storedUser) {
-        authToken = storedToken;
-        currentUser = JSON.parse(storedUser);
-        showApp();
-    } else {
-        checkAuth();
-    }
-    
-    document.getElementById('loginForm').addEventListener('submit', handleLogin);
-    document.getElementById('saleForm').addEventListener('submit', handleSale);
-    
-    const registerForm = document.getElementById('registerForm');
-    if (registerForm) {
-        registerForm.addEventListener('submit', handleRegister);
-    }
-    
-    const today = new Date().toISOString().split('T')[0];
-    const reportDate = document.getElementById('reportDate');
-    const historicalDate = document.getElementById('historicalDate');
-    if (reportDate) reportDate.max = today;
-    if (historicalDate) historicalDate.max = today;
-    
-    window.addEventListener('resize', () => {
-        if (window.innerWidth > 1024) {
+        function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const overlay = document.getElementById('sidebarOverlay');
             const hamburger = document.getElementById('hamburgerBtn');
-            sidebar.classList.remove('open');
-            overlay.classList.remove('active');
-            hamburger.classList.remove('active');
+            
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            hamburger.classList.toggle('active');
         }
-    });
-});
 
-async function checkAuth() {
-    try {
-        const response = await apiFetch('/auth/user/');
-        
-        if (response.ok) {
-            const data = await response.json();
-            currentUser = data;
-            showApp();
-            return true;
-        }
-    } catch (error) {
-        console.log('Not authenticated:', error);
-    }
-    return false;
-}
-
-async function handleLogin(e) {
-    e.preventDefault();
-    const btn = document.getElementById('loginBtn');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<span class="loading"></span> Signing in...';
-    btn.disabled = true;
-
-    try {
-        const response = await fetch(`${API_URL}/auth/login/`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                username: document.getElementById('username').value,
-                password: document.getElementById('password').value
-            })
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            document.getElementById('saleForm').addEventListener('submit', handleSale);
+            
+            const registerForm = document.getElementById('registerForm');
+            if (registerForm) {
+                registerForm.addEventListener('submit', handleRegister);
+            }
+            
+            const today = new Date().toISOString().split('T')[0];
+            const reportDate = document.getElementById('reportDate');
+            const historicalDate = document.getElementById('historicalDate');
+            if (reportDate) reportDate.max = today;
+            if (historicalDate) historicalDate.max = today;
+            
+            window.addEventListener('resize', () => {
+                if (window.innerWidth > 1024) {
+                    const sidebar = document.getElementById('sidebar');
+                    const overlay = document.getElementById('sidebarOverlay');
+                    const hamburger = document.getElementById('hamburgerBtn');
+                    sidebar.classList.remove('open');
+                    overlay.classList.remove('active');
+                    hamburger.classList.remove('active');
+                }
+            });
         });
 
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            console.error('Non-JSON response:', text);
-            showToast('Server error. Please try again.', 'error');
-            return;
-        }
-
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            // CRITICAL: Store the token
-            authToken = data.token;
-            localStorage.setItem('authToken', authToken);
-            localStorage.setItem('currentUser', JSON.stringify(data.user));
-            
-            currentUser = data.user;
-            showToast('Welcome back!', 'success');
-            showApp();
-        } else {
-            showToast(data.error || 'Invalid credentials', 'error');
-        }
-    } catch (error) {
-        console.error('Login error:', error);
-        showToast('Connection failed. Check console for details.', 'error');
-    } finally {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    }
-}
-
-async function handleRegister(e) {
-    e.preventDefault();
-    
-    const btn = document.getElementById('registerBtn');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<span class="loading"></span> Creating account...';
-    btn.disabled = true;
-
-    try {
-        const response = await fetch(`${API_URL}/auth/register/`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                username: document.getElementById('regUsername').value,
-                password: document.getElementById('regPassword').value,
-                email: document.getElementById('regEmail').value
-            })
-        });
-
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            const text = await response.text();
-            console.error('Non-JSON response:', text);
-            showToast('Server error. Please try again.', 'error');
-            return;
-        }
-
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            // CRITICAL: Store the token
-            authToken = data.token;
-            localStorage.setItem('authToken', authToken);
-            localStorage.setItem('currentUser', JSON.stringify(data.user));
-            
-            currentUser = data.user;
-            showToast('Account created successfully!', 'success');
-            showApp();
-        } else {
-            showToast(data.error || 'Registration failed', 'error');
-        }
-    } catch (error) {
-        console.error('Register error:', error);
-        showToast('Network error. Please try again.', 'error');
-    } finally {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    }
-}
-
-function showApp() {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('registerPage').classList.remove('active');
-    document.getElementById('mainApp').classList.add('active');
-    document.getElementById('userName').textContent = currentUser.username;
-    document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
-    
-    loadDashboardData();
-    loadMeatTypes();
-    loadStockByFreshness();
-}
-
-async function logout() {
-    try {
-        await apiFetch('/auth/logout/', { method: 'POST' });
-    } catch (e) {}
-    
-    // Clear stored data
-    authToken = null;
-    currentUser = null;
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('currentUser');
-    
-    document.getElementById('mainApp').classList.remove('active');
-    document.getElementById('loginScreen').style.display = 'flex';
-    document.getElementById('registerPage').classList.remove('active');
-    showToast('Logged out successfully', 'success');
-}
-
-function showPage(pageName) {
-    currentPage = pageName;
-
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('registerPage').classList.remove('active');
-    document.getElementById('mainApp').classList.remove('active');
-    
-    document.querySelectorAll('.page').forEach(page => {
-        page.classList.remove('active');
-    });
-
-    if (pageName === 'login') {
-        document.getElementById('loginScreen').style.display = 'flex';
-        return;
-    }
-    
-    if (pageName === 'register') {
-        document.getElementById('registerPage').classList.add('active');
-        return;
-    }
-
-    if (!currentUser) {
-        document.getElementById('loginScreen').style.display = 'flex';
-        return;
-    }
-
-    document.getElementById('mainApp').classList.add('active');
-
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    const hamburger = document.getElementById('hamburgerBtn');
-    if (sidebar.classList.contains('open')) {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('active');
-        hamburger.classList.remove('active');
-    }
-
-    document.querySelectorAll('.sidebar .nav-item').forEach(item => {
-        item.classList.remove('active');
-        if (item.dataset.page === pageName) {
-            item.classList.add('active');
-        }
-    });
-
-    document.querySelectorAll('.bottom-nav-item').forEach(item => {
-        item.classList.remove('active');
-        if (item.dataset.page === pageName) {
-            item.classList.add('active');
-        }
-    });
-
-    const targetPage = document.getElementById(pageName + 'Page');
-    if (targetPage) {
-        targetPage.classList.add('active');
-        document.querySelector('.main-content').scrollTop = 0;
-    }
-
-    if (pageName === 'dashboard') loadDashboardData();
-    if (pageName === 'stock') loadStockByFreshness();
-    if (pageName === 'sales') {
-        loadMeatTypes();
-        loadTodaySales();
-    }
-    if (pageName === 'reports') generateReport();
-    if (pageName === 'alerts') loadAllAlerts();
-}
-
-async function loadDashboardData() {
-    try {
-        const response = await apiFetch('/dashboard/');
-        
-        if (!response.ok) {
-            console.error('Dashboard error:', response.status);
-            if (response.status === 401 || response.status === 403) {
-                // Token expired or invalid
-                logout();
-            }
-            return;
-        }
-        
-        const dashboardData = await response.json();
-
-        const totalWeight = dashboardData.stock_summary?.reduce((sum, item) => sum + (item.total_weight || 0), 0) || 0;
-        
-        const totalStockEl = document.getElementById('totalStock');
-        if (totalStockEl) {
-            totalStockEl.innerHTML = `${totalWeight.toFixed(1)} <span class="stock-unit">kg</span>`;
-        }
-        
-        const todaySales = dashboardData.today_sales || { count: 0, revenue: 0, weight: 0 };
-        
-        const todayRevenueEl = document.getElementById('todayRevenue');
-        if (todayRevenueEl) {
-            todayRevenueEl.textContent = `KES ${(todaySales.revenue || 0).toFixed(0)}`;
-        }
-        
-        const todayWeightEl = document.getElementById('todayWeight');
-        if (todayWeightEl) {
-            todayWeightEl.innerHTML = `${(todaySales.weight || 0).toFixed(1)} <span class="stock-unit">kg</span>`;
-        }
-        
-        const salesCountEl = document.getElementById('salesCount');
-        if (salesCountEl) {
-            salesCountEl.textContent = `${todaySales.count || 0} sale${(todaySales.count || 0) !== 1 ? 's' : ''}`;
-        }
-        
-        const todaySalesCountEl = document.getElementById('todaySalesCount');
-        if (todaySalesCountEl) {
-            todaySalesCountEl.textContent = `${todaySales.count || 0} transaction${(todaySales.count || 0) !== 1 ? 's' : ''}`;
-        }
-        
-        const alertsCount = dashboardData.alerts?.length || 0;
-        
-        const activeAlertsEl = document.getElementById('activeAlerts');
-        if (activeAlertsEl) {
-            activeAlertsEl.textContent = alertsCount;
-        }
-        
-        const alertBadgeEl = document.getElementById('alertBadge');
-        if (alertBadgeEl) {
-            alertBadgeEl.textContent = alertsCount;
-        }
-
-        const overviewHtml = dashboardData.stock_summary?.map(type => `
-            <div style="margin-bottom: 20px;">
-                <h4 style="margin-bottom: 12px; color: var(--primary);">${type.meat_type}</h4>
-                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                    ${type.cuts?.map(cut => `
-                        <div style="background: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px;">
-                            <strong>${cut.cut_name}</strong>: ${cut.weight.toFixed(1)}kg
-                        </div>
-                    `).join('') || ''}
-                </div>
-            </div>
-        `).join('') || '';
-        
-        const stockOverviewEl = document.getElementById('stockOverview');
-        if (stockOverviewEl) {
-            stockOverviewEl.innerHTML = overviewHtml || '<div class="empty-state"><i class="fas fa-box-open"></i><h3>No Stock Data</h3></div>';
-        }
-
-        await loadTodaySalesList();
-
-    } catch (error) {
-        console.error('Failed to load dashboard:', error);
-        showToast('Failed to load dashboard data', 'error');
-    }
-}
-
-async function loadTodaySalesList() {
-    try {
-        const response = await apiFetch('/sales/today/');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const sales = await response.json();
-
-        const container = document.getElementById('todaySalesList');
-        
-        if (!Array.isArray(sales) || sales.length === 0) {
-            if (container) {
-                container.innerHTML = `
-                    <div class="empty-state" style="padding: 40px 20px;">
-                        <i class="fas fa-receipt" style="font-size: 48px; color: var(--border);"></i>
-                        <h3>No Sales Yet</h3>
-                        <p>Record a sale to see it here</p>
-                    </div>
-                `;
-            }
-            return;
-        }
-
-        const recentSales = sales.slice(0, 5);
-        const salesHtml = recentSales.map(sale => {
-            const salePrice = parseFloat(sale.total_price || 0);
-            const saleWeight = parseFloat(sale.weight_sold || 0);
-            const cutName = sale.meat_cut_name || 'Unknown';
-            const customerName = sale.customer_name || 'Walk-in';
-            const saleTime = sale.sold_at ? new Date(sale.sold_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
-            
-            return `
-                <div class="sale-item">
-                    <div class="sale-info">
-                        <div class="sale-title">${cutName}</div>
-                        <div class="sale-customer">${customerName}</div>
-                        <div class="sale-meta">${saleTime} • ${saleWeight.toFixed(2)} kg</div>
-                    </div>
-                    <div class="sale-amount">
-                        <div class="sale-price">KES ${salePrice.toFixed(2)}</div>
-                        <div class="sale-weight">@ KES ${parseFloat(sale.price_per_kg || 0).toFixed(0)}/kg</div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        if (container) {
-            container.innerHTML = salesHtml;
-        }
-        
-    } catch (error) {
-        console.error('Failed to load today sales list:', error);
-        const container = document.getElementById('todaySalesList');
-        if (container) {
-            container.innerHTML = `
-                <div class="empty-state" style="padding: 40px 20px;">
-                    <i class="fas fa-exclamation-circle" style="font-size: 48px; color: var(--warning);"></i>
-                    <h3>Error Loading Sales</h3>
-                    <p>Could not load sales data</p>
-                </div>
-            `;
-        }
-    }
-}
-
-async function loadStockByFreshness() {
-    try {
-        const response = await apiFetch('/stock/by-freshness/');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        currentStock = {
-            fresh: Array.isArray(data.fresh) ? data.fresh : [],
-            expired: Array.isArray(data.expired_or_old) ? data.expired_or_old : [],
-            all: []
-        };
-        
-        currentStock.all = [...currentStock.fresh, ...currentStock.expired];
-        
-        renderStockList();
-        
-    } catch (error) {
-        console.error('Failed to load stock:', error);
-        showToast('Failed to load stock data', 'error');
-    }
-}
-
-function filterStock(filter) {
-    currentStockFilter = filter;
-    
-    document.querySelectorAll('.freshness-tab').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    const tabEl = document.getElementById(`tab-${filter}`);
-    if (tabEl) tabEl.classList.add('active');
-    
-    const titles = {
-        'all': 'All Inventory',
-        'fresh': 'Fresh Stock (≤3 days)',
-        'expired': 'Stock Over 3 Days'
-    };
-    const titleEl = document.getElementById('stockListTitle');
-    if (titleEl) titleEl.textContent = titles[filter];
-    
-    renderStockList();
-}
-
-function renderStockList() {
-    const grid = document.getElementById('stockGrid');
-    const noMessage = document.getElementById('noStockMessage');
-    const searchInput = document.getElementById('stockSearch');
-    const searchTerm = searchInput?.value?.toLowerCase() || '';
-    
-    let stockToShow = [];
-    
-    if (currentStockFilter === 'fresh') {
-        stockToShow = currentStock.fresh || [];
-    } else if (currentStockFilter === 'expired') {
-        stockToShow = currentStock.expired || [];
-    } else {
-        stockToShow = currentStock.all || [];
-    }
-    
-    if (searchTerm) {
-        stockToShow = stockToShow.filter(item => 
-            (item.meat_cut_name || '').toLowerCase().includes(searchTerm) ||
-            (item.meat_type_name || '').toLowerCase().includes(searchTerm)
-        );
-    }
-    
-    if (!Array.isArray(stockToShow) || stockToShow.length === 0) {
-        if (grid) grid.innerHTML = '';
-        if (noMessage) noMessage.style.display = 'block';
-        return;
-    }
-    
-    if (noMessage) noMessage.style.display = 'none';
-    
-    if (grid) {
-        grid.innerHTML = stockToShow.map(item => {
-            const isFresh = item.days_until_expiry > 0 && 
-                           ((new Date() - new Date(item.received_date)) / (1000 * 60 * 60 * 24)) <= 3;
-            const cardClass = isFresh ? 'fresh' : 'expired';
-            const statusClass = isFresh ? 'fresh' : (item.days_until_expiry <= 0 ? 'danger' : 'warning');
-            const statusText = isFresh ? 'Fresh' : (item.days_until_expiry <= 0 ? 'Expired' : 'Aging');
-            const statusIcon = isFresh ? 'fa-leaf' : 'fa-clock';
-            
-            return `
-                <div class="stock-card ${cardClass}">
-                    <div class="stock-header">
-                        <div>
-                            <div class="stock-type">${item.meat_type_name || 'Unknown'}</div>
-                            <div class="stock-weight">${item.weight_kg} <span class="stock-unit">kg</span></div>
-                            <div style="font-size: 14px; color: var(--text-muted);">${item.meat_cut_name || 'Unknown'}</div>
-                        </div>
-                        <div class="status ${statusClass}">
-                            <i class="fas ${statusIcon}" style="font-size: 8px;"></i>
-                            ${statusText}
-                        </div>
-                    </div>
-                    <div class="stock-meta">
-                        <span><i class="fas fa-calendar"></i> ${new Date(item.received_date).toLocaleDateString()}</span>
-                        <span><i class="fas fa-clock"></i> ${item.days_until_expiry} days left</span>
-                        <span><i class="fas fa-user"></i> #${item.id}</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-}
-
-function searchStock() {
-    renderStockList();
-}
-
-async function loadMeatTypes() {
-    try {
-        const response = await apiFetch('/meat-types/');
-        
-        if (!response.ok) {
-            console.error('Failed to load meat types:', response.status);
-            meatTypes = [];
-            return;
-        }
-        
-        const data = await response.json();
-        
-        if (Array.isArray(data)) {
-            meatTypes = data;
-        } else {
-            console.error('Invalid meat types data:', data);
-            meatTypes = [];
-        }
-        
-        const select = document.getElementById('saleMeatType');
-        if (select) {
-            select.innerHTML = '<option value="">Select meat type</option>' +
-                meatTypes.map(type => `<option value="${type.id}">${type.name}</option>`).join('');
-        }
-    } catch (error) {
-        console.error('Failed to load meat types:', error);
-        meatTypes = [];
-    }
-}
-
-async function loadCutsForSale() {
-    const typeId = document.getElementById('saleMeatType')?.value;
-    if (!typeId) return;
-
-    try {
-        const response = await apiFetch(`/meat-cuts/${typeId}/`);
-        
-        if (!response.ok) {
-            console.error('Failed to load cuts:', response.status);
-            showToast('Failed to load meat cuts', 'error');
-            return;
-        }
-        
-        const cuts = await response.json();
-        
-        if (!Array.isArray(cuts)) {
-            console.error('Invalid cuts data:', cuts);
-            return;
-        }
-        
-        meatCuts = cuts;
-        
-        const select = document.getElementById('saleMeatCut');
-        if (select) {
-            select.innerHTML = '<option value="">Select cut</option>' +
-                meatCuts.map(cut => `<option value="${cut.id}">${cut.name}</option>`).join('');
-        }
-        
-        const availableStock = document.getElementById('availableStock');
-        if (availableStock) availableStock.value = '';
-    } catch (error) {
-        console.error('Failed to load cuts:', error);
-        showToast('Failed to load cuts', 'error');
-    }
-}
-
-function updateAvailableStock() {
-    const cutId = document.getElementById('saleMeatCut')?.value;
-    if (!cutId) {
-        const availableStock = document.getElementById('availableStock');
-        if (availableStock) availableStock.value = '';
-        return;
-    }
-
-    const available = (currentStock.all || [])
-        .filter(s => s.meat_cut === parseInt(cutId) && s.is_active)
-        .reduce((sum, s) => sum + parseFloat(s.weight_kg), 0);
-    
-    const availableStockEl = document.getElementById('availableStock');
-    if (availableStockEl) {
-        availableStockEl.value = `${available.toFixed(2)} kg available`;
-    }
-}
-
-async function handleSale(e) {
-    e.preventDefault();
-    
-    const cutId = document.getElementById('saleMeatCut')?.value;
-    const weight = parseFloat(document.getElementById('saleWeight')?.value);
-    const price = parseFloat(document.getElementById('salePrice')?.value);
-    const customerName = document.getElementById('customerName')?.value || 'Walk-in';
-    
-    if (!cutId || !weight || !price) {
-        showToast('Please fill in all required fields', 'error');
-        return;
-    }
-    
-    const stockItem = (currentStock.all || []).find(s => 
-        s.meat_cut === parseInt(cutId) && 
-        s.is_active && 
-        parseFloat(s.weight_kg) >= weight
-    );
-
-    if (!stockItem) {
-        showToast('Insufficient stock for this sale', 'error');
-        return;
-    }
-
-    try {
-        const response = await apiFetch('/sales/', {
-            method: 'POST',
-            body: JSON.stringify({
-                stock_id: stockItem.id,
-                weight_sold: weight,
-                price_per_kg: price,
-                customer_name: customerName
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            showToast(error.error || 'Failed to record sale', 'error');
-            return;
-        }
-
-        const saleData = await response.json();
-        const totalPrice = parseFloat(saleData.total_price || (weight * price));
-        showToast(`Sale recorded for ${customerName}! Total: KES ${totalPrice.toFixed(2)}`, 'success');
-        
-        const saleForm = document.getElementById('saleForm');
-        if (saleForm) saleForm.reset();
-        
-        const availableStock = document.getElementById('availableStock');
-        if (availableStock) availableStock.value = '';
-        
-        await loadTodaySales();
-        await loadDashboardData();
-        await loadStockByFreshness();
-            
-    } catch (error) {
-        console.error('Sale error:', error);
-        showToast('Network error. Please try again.', 'error');
-    }
-}
-
-async function loadTodaySales() {
-    try {
-        const response = await apiFetch('/sales/today/');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const sales = await response.json();
-        const tbody = document.getElementById('todaySalesTable');
-        
-        if (!Array.isArray(sales) || sales.length === 0) {
-            if (tbody) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No sales today</td></tr>';
-            }
-            return;
-        }
-
-        if (tbody) {
-            tbody.innerHTML = sales.map(sale => {
-                const saleTime = sale.sold_at ? new Date(sale.sold_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
-                const cutName = sale.meat_cut_name || 'Unknown';
-                const customerName = sale.customer_name || 'Walk-in';
-                const weight = parseFloat(sale.weight_sold || 0).toFixed(2);
-                const total = parseFloat(sale.total_price || 0).toFixed(2);
+        async function checkAuth() {
+            try {
+                const response = await fetch(`${API_URL}/auth/user/`, {
+                    credentials: 'include'
+                });
                 
-                return `
-                    <tr>
-                        <td>${saleTime}</td>
-                        <td>${cutName}</td>
-                        <td>${customerName}</td>
-                        <td>${weight} kg</td>
-                        <td>KES ${total}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-        
-    } catch (error) {
-        console.error('Failed to load today sales:', error);
-        const tbody = document.getElementById('todaySalesTable');
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--danger); padding: 20px;">Error loading sales</td></tr>';
-        }
-    }
-}
-
-async function generateDateReport() {
-    const dateInput = document.getElementById('reportDate')?.value;
-    if (!dateInput) {
-        showToast('Please select a date', 'warning');
-        return;
-    }
-
-    const [year, month, day] = dateInput.split('-').map(Number);
-    
-    try {
-        const response = await apiFetch(`/sales/date/${year}/${month}/${day}/`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to fetch report');
-        }
-        
-        const data = await response.json();
-        const resultsDiv = document.getElementById('dateReportResults');
-        
-        if (!resultsDiv) return;
-
-        if (!Array.isArray(data.sales) || data.sales.length === 0) {
-            resultsDiv.innerHTML = `
-                <div class="report-result">
-                    <div class="report-date-header">
-                        <h3><i class="fas fa-calendar"></i> ${new Date(dateInput).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
-                    </div>
-                    <div class="empty-state" style="padding: 40px;">
-                        <i class="fas fa-receipt" style="font-size: 48px; color: var(--border);"></i>
-                        <h3>No Sales on This Date</h3>
-                        <p>No transactions were recorded for the selected date.</p>
-                    </div>
-                </div>
-            `;
-            return;
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser = data;
+                    showApp();
+                    return true;
+                }
+            } catch (error) {
+                console.log('Not authenticated:', error);
+            }
+            return false;
         }
 
-        const salesRows = data.sales.map(sale => `
-            <tr>
-                <td>${new Date(sale.sold_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-                <td>${sale.meat_cut_name || 'Unknown'}</td>
-                <td>${sale.customer_name || 'Walk-in'}</td>
-                <td>${parseFloat(sale.weight_sold).toFixed(2)} kg</td>
-                <td>KES ${parseFloat(sale.total_price).toFixed(2)}</td>
-            </tr>
-        `).join('');
+        async function handleLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('loginBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="loading"></span> Signing in...';
+            btn.disabled = true;
 
-        const cutSummary = Object.entries(data.by_cut || {}).map(([cut, info]) => `
-            <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 8px;">
-                <strong>${cut}</strong>: ${info.count} sales, ${info.weight.toFixed(2)} kg, KES ${info.revenue.toFixed(2)}
-            </div>
-        `).join('');
+            try {
+                const response = await fetch(`${API_URL}/auth/login/`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        username: document.getElementById('username').value,
+                        password: document.getElementById('password').value
+                    })
+                });
 
-        resultsDiv.innerHTML = `
-            <div class="report-result fade-in">
-                <div class="report-date-header">
-                    <h3><i class="fas fa-calendar-check"></i> ${new Date(dateInput).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
-                </div>
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text);
+                    showToast('Server error. Please try again.', 'error');
+                    return;
+                }
+
+                const data = await response.json();
                 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                    <div class="stat-card">
-                        <div class="stat-label">Total Revenue</div>
-                        <div class="stat-value" style="color: var(--success);">KES ${data.summary.total_revenue.toFixed(2)}</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Total Weight</div>
-                        <div class="stat-value">${data.summary.total_weight.toFixed(2)} kg</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Transactions</div>
-                        <div class="stat-value">${data.summary.count}</div>
-                    </div>
-                </div>
-
-                <h4 style="margin-bottom: 12px;">Sales by Product</h4>
-                ${cutSummary || '<p style="color: var(--text-muted);">No breakdown available</p>'}
-
-                <h4 style="margin: 24px 0 12px;">Transaction Details</h4>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Item</th>
-                                <th>Customer</th>
-                                <th>Weight</th>
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${salesRows}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-        
-        showToast(`Report generated for ${dateInput}`, 'success');
-        
-    } catch (error) {
-        console.error('Failed to generate date report:', error);
-        showToast('Failed to generate report', 'error');
-    }
-}
-
-async function generateReport() {
-    const days = document.getElementById('reportPeriod')?.value;
-    if (!days) return;
-    
-    try {
-        const response = await apiFetch(`/sales/report/?days=${days}`);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-
-        const reportRevenue = document.getElementById('reportRevenue');
-        const reportWeight = document.getElementById('reportWeight');
-        const reportTransactions = document.getElementById('reportTransactions');
-        
-        if (reportRevenue) reportRevenue.textContent = `KES ${(data.total_revenue || 0).toFixed(0)}`;
-        if (reportWeight) reportWeight.textContent = `${(data.total_weight || 0).toFixed(1)} kg`;
-        if (reportTransactions) reportTransactions.textContent = data.total_transactions || 0;
-
-        const salesResponse = await apiFetch('/sales/');
-        
-        if (!salesResponse.ok) {
-            throw new Error(`HTTP error! status: ${salesResponse.status}`);
-        }
-        
-        const sales = await salesResponse.json();
-        
-        const tbody = document.getElementById('recentTransactions');
-        if (tbody) {
-            tbody.innerHTML = (Array.isArray(sales) ? sales : []).slice(0, 10).map(sale => {
-                const customerName = sale.customer_name || 'Walk-in';
-                return `
-                    <tr>
-                        <td>${sale.sold_at ? new Date(sale.sold_at).toLocaleDateString() : '--'}</td>
-                        <td>${sale.meat_cut_name || 'Unknown'}</td>
-                        <td>${customerName}</td>
-                        <td>KES ${parseFloat(sale.total_price || 0).toFixed(2)}</td>
-                    </tr>
-                `;
-            }).join('');
+                if (response.ok && data.success) {
+                    currentUser = data.user;
+                    showToast('Welcome back!', 'success');
+                    showApp();
+                } else {
+                    showToast(data.error || 'Invalid credentials', 'error');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showToast('Connection failed. Check console for details.', 'error');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
 
-    } catch (error) {
-        console.error('Failed to generate report:', error);
-        showToast('Failed to generate report', 'error');
-    }
-}
+        async function handleRegister(e) {
+            e.preventDefault();
+            
+            const btn = document.getElementById('registerBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="loading"></span> Creating account...';
+            btn.disabled = true;
 
-async function checkHistoricalStock() {
-    const dateInput = document.getElementById('historicalDate')?.value;
-    if (!dateInput) {
-        showToast('Please select a date', 'warning');
-        return;
-    }
+            try {
+                const response = await fetch(`${API_URL}/auth/register/`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        username: document.getElementById('regUsername').value,
+                        password: document.getElementById('regPassword').value,
+                        email: document.getElementById('regEmail').value
+                    })
+                });
 
-    try {
-        const response = await apiFetch(`/stock/historical/?date=${dateInput}`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to fetch historical data');
-        }
-        
-        const data = await response.json();
-        const resultsDiv = document.getElementById('historicalStockResults');
-        
-        if (!resultsDiv) return;
-        
-        if (!Array.isArray(data.stock_items) || data.stock_items.length === 0) {
-            resultsDiv.innerHTML = `
-                <div class="report-result fade-in" style="margin-top: 20px;">
-                    <div class="report-date-header" style="background: linear-gradient(135deg, var(--secondary) 0%, #374151 100%);">
-                        <h3><i class="fas fa-history"></i> Stock on ${new Date(dateInput).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
-                    </div>
-                    <div class="empty-state" style="padding: 40px;">
-                        <i class="fas fa-box-open" style="font-size: 48px; color: var(--border);"></i>
-                        <h3>No Stock Records</h3>
-                        <p>No stock was available on this date.</p>
-                    </div>
-                </div>
-            `;
-            return;
-        }
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text);
+                    showToast('Server error. Please try again.', 'error');
+                    return;
+                }
 
-        const stockRows = data.stock_items.map(item => `
-            <tr class="${item.status}">
-                <td>${item.meat_type_name || 'Unknown'}</td>
-                <td>${item.meat_cut_name || 'Unknown'}</td>
-                <td>${item.remaining_on_date.toFixed(2)} kg</td>
-                <td>${item.days_since_received} days</td>
-                <td>
-                    <span class="status ${item.status}">
-                        ${item.status === 'fresh' ? 'Fresh' : 'Aged'}
-                        ${item.is_expired ? ' (Expired)' : ''}
-                    </span>
-                </td>
-            </tr>
-        `).join('');
-
-        resultsDiv.innerHTML = `
-            <div class="report-result fade-in" style="margin-top: 20px;">
-                <div class="report-date-header" style="background: linear-gradient(135deg, var(--secondary) 0%, #374151 100%);">
-                    <h3><i class="fas fa-history"></i> Stock on ${new Date(dateInput).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
-                </div>
+                const data = await response.json();
                 
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                    <div class="stat-card" style="border-left: 4px solid var(--fresh);">
-                        <div class="stat-label">Fresh Stock</div>
-                        <div class="stat-value" style="color: var(--fresh); font-size: 20px;">${data.fresh_count} items</div>
-                        <div style="font-size: 14px; color: var(--text-muted);">${data.fresh_weight.toFixed(2)} kg</div>
-                    </div>
-                    <div class="stat-card" style="border-left: 4px solid var(--warning);">
-                        <div class="stat-label">Aged Stock</div>
-                        <div class="stat-value" style="color: var(--warning); font-size: 20px;">${data.aged_count} items</div>
-                        <div style="font-size: 14px; color: var(--text-muted);">${data.aged_weight.toFixed(2)} kg</div>
-                    </div>
-                    <div class="stat-card" style="border-left: 4px solid var(--primary);">
-                        <div class="stat-label">Total Items</div>
-                        <div class="stat-value" style="font-size: 20px;">${data.total_items}</div>
-                        <div style="font-size: 14px; color: var(--text-muted);">${data.total_weight.toFixed(2)} kg</div>
-                    </div>
-                </div>
-
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Type</th>
-                                <th>Cut</th>
-                                <th>Remaining</th>
-                                <th>Age</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${stockRows}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-        
-        showToast(`Historical stock loaded for ${dateInput}`, 'success');
-        
-    } catch (error) {
-        console.error('Failed to load historical stock:', error);
-        showToast('Failed to load historical stock data', 'error');
-    }
-}
-
-async function loadAllAlerts() {
-    try {
-        const response = await apiFetch('/alerts/');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const alerts = await response.json();
-
-        const container = document.getElementById('allAlertsList');
-        if (!container) return;
-
-        if (!Array.isArray(alerts) || alerts.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-check-circle" style="font-size: 64px; color: var(--success);"></i>
-                    <h3>No Active Alerts</h3>
-                    <p>Your inventory is in good shape!</p>
-                </div>
-            `;
-            return;
+                if (response.ok && data.success) {
+                    showToast('Account created successfully!', 'success');
+                    currentUser = data.user;
+                    showApp();
+                } else {
+                    showToast(data.error || 'Registration failed', 'error');
+                }
+            } catch (error) {
+                console.error('Register error:', error);
+                showToast('Network error. Please try again.', 'error');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
 
-        container.innerHTML = alerts.map(alert => `
-            <div class="alert-item ${alert.severity}">
-                <div class="alert-icon">
-                    <i class="fas fa-${alert.type === 'low_stock' ? 'box' : 'clock'}"></i>
-                </div>
-                <div class="alert-content">
-                    <div class="alert-title">${alert.title}</div>
-                    <div class="alert-message">${alert.message}</div>
-                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                        ${alert.created_at ? new Date(alert.created_at).toLocaleString() : ''}
-                    </div>
-                </div>
-            </div>
-        `).join('');
-    } catch (error) {
-        console.error('Failed to load alerts:', error);
-        showToast('Failed to load alerts', 'error');
-    }
-}
+        function showApp() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('registerPage').classList.remove('active');
+            document.getElementById('mainApp').classList.add('active');
+            document.getElementById('userName').textContent = currentUser.username;
+            document.getElementById('userAvatar').textContent = currentUser.username[0].toUpperCase();
+            
+            loadDashboardData();
+            loadMeatTypes();
+            loadStockByFreshness();
+        }
 
-function markAllRead() {
-    showToast('All alerts marked as read', 'success');
-}
+        async function logout() {
+            try {
+                await fetch(`${API_URL}/auth/logout/`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+            } catch (e) {}
+            
+            currentUser = null;
+            document.getElementById('mainApp').classList.remove('active');
+            document.getElementById('loginScreen').style.display = 'flex';
+            document.getElementById('registerPage').classList.remove('active');
+            showToast('Logged out successfully', 'success');
+        }
 
-function openAddStockModal() {
-    if (!Array.isArray(meatTypes) || meatTypes.length === 0) {
-        loadMeatTypes().then(() => {
-            if (!Array.isArray(meatTypes) || meatTypes.length === 0) {
-                showToast('Failed to load meat types. Please try again.', 'error');
+        function showPage(pageName) {
+            currentPage = pageName;
+
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('registerPage').classList.remove('active');
+            document.getElementById('mainApp').classList.remove('active');
+            
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+
+            if (pageName === 'login') {
+                document.getElementById('loginScreen').style.display = 'flex';
                 return;
             }
+            
+            if (pageName === 'register') {
+                document.getElementById('registerPage').classList.add('active');
+                return;
+            }
+
+            if (!currentUser) {
+                document.getElementById('loginScreen').style.display = 'flex';
+                return;
+            }
+
+            document.getElementById('mainApp').classList.add('active');
+
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            const hamburger = document.getElementById('hamburgerBtn');
+            if (sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('active');
+                hamburger.classList.remove('active');
+            }
+
+            document.querySelectorAll('.sidebar .nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.page === pageName) {
+                    item.classList.add('active');
+                }
+            });
+
+            document.querySelectorAll('.bottom-nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.page === pageName) {
+                    item.classList.add('active');
+                }
+            });
+
+            const targetPage = document.getElementById(pageName + 'Page');
+            if (targetPage) {
+                targetPage.classList.add('active');
+                document.querySelector('.main-content').scrollTop = 0;
+            }
+
+            if (pageName === 'dashboard') loadDashboardData();
+            if (pageName === 'stock') loadStockByFreshness();
+            if (pageName === 'sales') {
+                loadMeatTypes();
+                loadTodaySales();
+            }
+            if (pageName === 'reports') generateReport();
+            if (pageName === 'alerts') loadAllAlerts();
+        }
+
+        async function loadDashboardData() {
+            try {
+                const response = await fetch(`${API_URL}/dashboard/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    console.error('Dashboard error:', response.status);
+                    return;
+                }
+                
+                const dashboardData = await response.json();
+
+                const totalWeight = dashboardData.stock_summary?.reduce((sum, item) => sum + (item.total_weight || 0), 0) || 0;
+                
+                const totalStockEl = document.getElementById('totalStock');
+                if (totalStockEl) {
+                    totalStockEl.innerHTML = `${totalWeight.toFixed(1)} <span class="stock-unit">kg</span>`;
+                }
+                
+                const todaySales = dashboardData.today_sales || { count: 0, revenue: 0, weight: 0 };
+                
+                const todayRevenueEl = document.getElementById('todayRevenue');
+                if (todayRevenueEl) {
+                    todayRevenueEl.textContent = `KES ${(todaySales.revenue || 0).toFixed(0)}`;
+                }
+                
+                const todayWeightEl = document.getElementById('todayWeight');
+                if (todayWeightEl) {
+                    todayWeightEl.innerHTML = `${(todaySales.weight || 0).toFixed(1)} <span class="stock-unit">kg</span>`;
+                }
+                
+                const salesCountEl = document.getElementById('salesCount');
+                if (salesCountEl) {
+                    salesCountEl.textContent = `${todaySales.count || 0} sale${(todaySales.count || 0) !== 1 ? 's' : ''}`;
+                }
+                
+                const todaySalesCountEl = document.getElementById('todaySalesCount');
+                if (todaySalesCountEl) {
+                    todaySalesCountEl.textContent = `${todaySales.count || 0} transaction${(todaySales.count || 0) !== 1 ? 's' : ''}`;
+                }
+                
+                const alertsCount = dashboardData.alerts?.length || 0;
+                
+                const activeAlertsEl = document.getElementById('activeAlerts');
+                if (activeAlertsEl) {
+                    activeAlertsEl.textContent = alertsCount;
+                }
+                
+                const alertBadgeEl = document.getElementById('alertBadge');
+                if (alertBadgeEl) {
+                    alertBadgeEl.textContent = alertsCount;
+                }
+
+                const overviewHtml = dashboardData.stock_summary?.map(type => `
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin-bottom: 12px; color: var(--primary);">${type.meat_type}</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                            ${type.cuts?.map(cut => `
+                                <div style="background: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px;">
+                                    <strong>${cut.cut_name}</strong>: ${cut.weight.toFixed(1)}kg
+                                </div>
+                            `).join('') || ''}
+                        </div>
+                    </div>
+                `).join('') || '';
+                
+                const stockOverviewEl = document.getElementById('stockOverview');
+                if (stockOverviewEl) {
+                    stockOverviewEl.innerHTML = overviewHtml || '<div class="empty-state"><i class="fas fa-box-open"></i><h3>No Stock Data</h3></div>';
+                }
+
+                await loadTodaySalesList();
+
+            } catch (error) {
+                console.error('Failed to load dashboard:', error);
+                showToast('Failed to load dashboard data', 'error');
+            }
+        }
+
+        async function loadTodaySalesList() {
+            try {
+                const response = await fetch(`${API_URL}/sales/today/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const sales = await response.json();
+
+                const container = document.getElementById('todaySalesList');
+                
+                if (!Array.isArray(sales) || sales.length === 0) {
+                    if (container) {
+                        container.innerHTML = `
+                            <div class="empty-state" style="padding: 40px 20px;">
+                                <i class="fas fa-receipt" style="font-size: 48px; color: var(--border);"></i>
+                                <h3>No Sales Yet</h3>
+                                <p>Record a sale to see it here</p>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+
+                const recentSales = sales.slice(0, 5);
+                const salesHtml = recentSales.map(sale => {
+                    const salePrice = parseFloat(sale.total_price || 0);
+                    const saleWeight = parseFloat(sale.weight_sold || 0);
+                    const cutName = sale.meat_cut_name || 'Unknown';
+                    const customerName = sale.customer_name || 'Walk-in';
+                    const saleTime = sale.sold_at ? new Date(sale.sold_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
+                    
+                    return `
+                        <div class="sale-item">
+                            <div class="sale-info">
+                                <div class="sale-title">${cutName}</div>
+                                <div class="sale-customer">${customerName}</div>
+                                <div class="sale-meta">${saleTime} • ${saleWeight.toFixed(2)} kg</div>
+                            </div>
+                            <div class="sale-amount">
+                                <div class="sale-price">KES ${salePrice.toFixed(2)}</div>
+                                <div class="sale-weight">@ KES ${parseFloat(sale.price_per_kg || 0).toFixed(0)}/kg</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                if (container) {
+                    container.innerHTML = salesHtml;
+                }
+                
+            } catch (error) {
+                console.error('Failed to load today sales list:', error);
+                const container = document.getElementById('todaySalesList');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="padding: 40px 20px;">
+                            <i class="fas fa-exclamation-circle" style="font-size: 48px; color: var(--warning);"></i>
+                            <h3>Error Loading Sales</h3>
+                            <p>Could not load sales data</p>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        async function loadStockByFreshness() {
+            try {
+                const response = await fetch(`${API_URL}/stock/by-freshness/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                currentStock = {
+                    fresh: Array.isArray(data.fresh) ? data.fresh : [],
+                    expired: Array.isArray(data.expired_or_old) ? data.expired_or_old : [],
+                    all: []
+                };
+                
+                currentStock.all = [...currentStock.fresh, ...currentStock.expired];
+                
+                renderStockList();
+                
+            } catch (error) {
+                console.error('Failed to load stock:', error);
+                showToast('Failed to load stock data', 'error');
+            }
+        }
+
+        function filterStock(filter) {
+            currentStockFilter = filter;
+            
+            document.querySelectorAll('.freshness-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            const tabEl = document.getElementById(`tab-${filter}`);
+            if (tabEl) tabEl.classList.add('active');
+            
+            const titles = {
+                'all': 'All Inventory',
+                'fresh': 'Fresh Stock (≤3 days)',
+                'expired': 'Stock Over 3 Days'
+            };
+            const titleEl = document.getElementById('stockListTitle');
+            if (titleEl) titleEl.textContent = titles[filter];
+            
+            renderStockList();
+        }
+
+        function renderStockList() {
+            const grid = document.getElementById('stockGrid');
+            const noMessage = document.getElementById('noStockMessage');
+            const searchInput = document.getElementById('stockSearch');
+            const searchTerm = searchInput?.value?.toLowerCase() || '';
+            
+            let stockToShow = [];
+            
+            if (currentStockFilter === 'fresh') {
+                stockToShow = currentStock.fresh || [];
+            } else if (currentStockFilter === 'expired') {
+                stockToShow = currentStock.expired || [];
+            } else {
+                stockToShow = currentStock.all || [];
+            }
+            
+            if (searchTerm) {
+                stockToShow = stockToShow.filter(item => 
+                    (item.meat_cut_name || '').toLowerCase().includes(searchTerm) ||
+                    (item.meat_type_name || '').toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            if (!Array.isArray(stockToShow) || stockToShow.length === 0) {
+                if (grid) grid.innerHTML = '';
+                if (noMessage) noMessage.style.display = 'block';
+                return;
+            }
+            
+            if (noMessage) noMessage.style.display = 'none';
+            
+            if (grid) {
+                grid.innerHTML = stockToShow.map(item => {
+                    const isFresh = item.days_until_expiry > 0 && 
+                                   ((new Date() - new Date(item.received_date)) / (1000 * 60 * 60 * 24)) <= 3;
+                    const cardClass = isFresh ? 'fresh' : 'expired';
+                    const statusClass = isFresh ? 'fresh' : (item.days_until_expiry <= 0 ? 'danger' : 'warning');
+                    const statusText = isFresh ? 'Fresh' : (item.days_until_expiry <= 0 ? 'Expired' : 'Aging');
+                    const statusIcon = isFresh ? 'fa-leaf' : 'fa-clock';
+                    
+                    return `
+                        <div class="stock-card ${cardClass}">
+                            <div class="stock-header">
+                                <div>
+                                    <div class="stock-type">${item.meat_type_name || 'Unknown'}</div>
+                                    <div class="stock-weight">${item.weight_kg} <span class="stock-unit">kg</span></div>
+                                    <div style="font-size: 14px; color: var(--text-muted);">${item.meat_cut_name || 'Unknown'}</div>
+                                </div>
+                                <div class="status ${statusClass}">
+                                    <i class="fas ${statusIcon}" style="font-size: 8px;"></i>
+                                    ${statusText}
+                                </div>
+                            </div>
+                            <div class="stock-meta">
+                                <span><i class="fas fa-calendar"></i> ${new Date(item.received_date).toLocaleDateString()}</span>
+                                <span><i class="fas fa-clock"></i> ${item.days_until_expiry} days left</span>
+                                <span><i class="fas fa-user"></i> #${item.id}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function searchStock() {
+            renderStockList();
+        }
+
+        async function loadMeatTypes() {
+            try {
+                const response = await fetch(`${API_URL}/meat-types/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    console.error('Failed to load meat types:', response.status);
+                    meatTypes = [];
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (Array.isArray(data)) {
+                    meatTypes = data;
+                } else {
+                    console.error('Invalid meat types data:', data);
+                    meatTypes = [];
+                }
+                
+                const select = document.getElementById('saleMeatType');
+                if (select) {
+                    select.innerHTML = '<option value="">Select meat type</option>' +
+                        meatTypes.map(type => `<option value="${type.id}">${type.name}</option>`).join('');
+                }
+            } catch (error) {
+                console.error('Failed to load meat types:', error);
+                meatTypes = [];
+            }
+        }
+
+        async function loadCutsForSale() {
+            const typeId = document.getElementById('saleMeatType')?.value;
+            if (!typeId) return;
+
+            try {
+                const response = await fetch(`${API_URL}/meat-cuts/${typeId}/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    console.error('Failed to load cuts:', response.status);
+                    showToast('Failed to load meat cuts', 'error');
+                    return;
+                }
+                
+                const cuts = await response.json();
+                
+                if (!Array.isArray(cuts)) {
+                    console.error('Invalid cuts data:', cuts);
+                    return;
+                }
+                
+                meatCuts = cuts;
+                
+                const select = document.getElementById('saleMeatCut');
+                if (select) {
+                    select.innerHTML = '<option value="">Select cut</option>' +
+                        meatCuts.map(cut => `<option value="${cut.id}">${cut.name}</option>`).join('');
+                }
+                
+                const availableStock = document.getElementById('availableStock');
+                if (availableStock) availableStock.value = '';
+            } catch (error) {
+                console.error('Failed to load cuts:', error);
+                showToast('Failed to load cuts', 'error');
+            }
+        }
+
+        function updateAvailableStock() {
+            const cutId = document.getElementById('saleMeatCut')?.value;
+            if (!cutId) {
+                const availableStock = document.getElementById('availableStock');
+                if (availableStock) availableStock.value = '';
+                return;
+            }
+
+            const available = (currentStock.all || [])
+                .filter(s => s.meat_cut === parseInt(cutId) && s.is_active)
+                .reduce((sum, s) => sum + parseFloat(s.weight_kg), 0);
+            
+            const availableStockEl = document.getElementById('availableStock');
+            if (availableStockEl) {
+                availableStockEl.value = `${available.toFixed(2)} kg available`;
+            }
+        }
+
+        async function handleSale(e) {
+            e.preventDefault();
+            
+            const cutId = document.getElementById('saleMeatCut')?.value;
+            const weight = parseFloat(document.getElementById('saleWeight')?.value);
+            const price = parseFloat(document.getElementById('salePrice')?.value);
+            const customerName = document.getElementById('customerName')?.value || 'Walk-in';
+            
+            if (!cutId || !weight || !price) {
+                showToast('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            const stockItem = (currentStock.all || []).find(s => 
+                s.meat_cut === parseInt(cutId) && 
+                s.is_active && 
+                parseFloat(s.weight_kg) >= weight
+            );
+
+            if (!stockItem) {
+                showToast('Insufficient stock for this sale', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/sales/`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        stock_id: stockItem.id,
+                        weight_sold: weight,
+                        price_per_kg: price,
+                        customer_name: customerName
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    showToast(error.error || 'Failed to record sale', 'error');
+                    return;
+                }
+
+                const saleData = await response.json();
+                const totalPrice = parseFloat(saleData.total_price || (weight * price));
+                showToast(`Sale recorded for ${customerName}! Total: KES ${totalPrice.toFixed(2)}`, 'success');
+                
+                const saleForm = document.getElementById('saleForm');
+                if (saleForm) saleForm.reset();
+                
+                const availableStock = document.getElementById('availableStock');
+                if (availableStock) availableStock.value = '';
+                
+                await loadTodaySales();
+                await loadDashboardData();
+                await loadStockByFreshness();
+                    
+            } catch (error) {
+                console.error('Sale error:', error);
+                showToast('Network error. Please try again.', 'error');
+            }
+        }
+
+        async function loadTodaySales() {
+            try {
+                const response = await fetch(`${API_URL}/sales/today/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const sales = await response.json();
+                const tbody = document.getElementById('todaySalesTable');
+                
+                if (!Array.isArray(sales) || sales.length === 0) {
+                    if (tbody) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">No sales today</td></tr>';
+                    }
+                    return;
+                }
+
+                if (tbody) {
+                    tbody.innerHTML = sales.map(sale => {
+                        const saleTime = sale.sold_at ? new Date(sale.sold_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--';
+                        const cutName = sale.meat_cut_name || 'Unknown';
+                        const customerName = sale.customer_name || 'Walk-in';
+                        const weight = parseFloat(sale.weight_sold || 0).toFixed(2);
+                        const total = parseFloat(sale.total_price || 0).toFixed(2);
+                        
+                        return `
+                            <tr>
+                                <td>${saleTime}</td>
+                                <td>${cutName}</td>
+                                <td>${customerName}</td>
+                                <td>${weight} kg</td>
+                                <td>KES ${total}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+                
+            } catch (error) {
+                console.error('Failed to load today sales:', error);
+                const tbody = document.getElementById('todaySalesTable');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--danger); padding: 20px;">Error loading sales</td></tr>';
+                }
+            }
+        }
+
+        async function generateDateReport() {
+            const dateInput = document.getElementById('reportDate')?.value;
+            if (!dateInput) {
+                showToast('Please select a date', 'warning');
+                return;
+            }
+
+            const [year, month, day] = dateInput.split('-').map(Number);
+            
+            try {
+                const response = await fetch(`${API_URL}/sales/date/${year}/${month}/${day}/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch report');
+                }
+                
+                const data = await response.json();
+                const resultsDiv = document.getElementById('dateReportResults');
+                
+                if (!resultsDiv) return;
+
+                if (!Array.isArray(data.sales) || data.sales.length === 0) {
+                    resultsDiv.innerHTML = `
+                        <div class="report-result">
+                            <div class="report-date-header">
+                                <h3><i class="fas fa-calendar"></i> ${new Date(dateInput).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
+                            </div>
+                            <div class="empty-state" style="padding: 40px;">
+                                <i class="fas fa-receipt" style="font-size: 48px; color: var(--border);"></i>
+                                <h3>No Sales on This Date</h3>
+                                <p>No transactions were recorded for the selected date.</p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const salesRows = data.sales.map(sale => `
+                    <tr>
+                        <td>${new Date(sale.sold_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                        <td>${sale.meat_cut_name || 'Unknown'}</td>
+                        <td>${sale.customer_name || 'Walk-in'}</td>
+                        <td>${parseFloat(sale.weight_sold).toFixed(2)} kg</td>
+                        <td>KES ${parseFloat(sale.total_price).toFixed(2)}</td>
+                    </tr>
+                `).join('');
+
+                const cutSummary = Object.entries(data.by_cut || {}).map(([cut, info]) => `
+                    <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 8px;">
+                        <strong>${cut}</strong>: ${info.count} sales, ${info.weight.toFixed(2)} kg, KES ${info.revenue.toFixed(2)}
+                    </div>
+                `).join('');
+
+                resultsDiv.innerHTML = `
+                    <div class="report-result fade-in">
+                        <div class="report-date-header">
+                            <h3><i class="fas fa-calendar-check"></i> ${new Date(dateInput).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                            <div class="stat-card">
+                                <div class="stat-label">Total Revenue</div>
+                                <div class="stat-value" style="color: var(--success);">KES ${data.summary.total_revenue.toFixed(2)}</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Total Weight</div>
+                                <div class="stat-value">${data.summary.total_weight.toFixed(2)} kg</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Transactions</div>
+                                <div class="stat-value">${data.summary.count}</div>
+                            </div>
+                        </div>
+
+                        <h4 style="margin-bottom: 12px;">Sales by Product</h4>
+                        ${cutSummary || '<p style="color: var(--text-muted);">No breakdown available</p>'}
+
+                        <h4 style="margin: 24px 0 12px;">Transaction Details</h4>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Item</th>
+                                        <th>Customer</th>
+                                        <th>Weight</th>
+                                        <th>Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${salesRows}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                
+                showToast(`Report generated for ${dateInput}`, 'success');
+                
+            } catch (error) {
+                console.error('Failed to generate date report:', error);
+                showToast('Failed to generate report', 'error');
+            }
+        }
+
+        async function generateReport() {
+            const days = document.getElementById('reportPeriod')?.value;
+            if (!days) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/sales/report/?days=${days}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+
+                const reportRevenue = document.getElementById('reportRevenue');
+                const reportWeight = document.getElementById('reportWeight');
+                const reportTransactions = document.getElementById('reportTransactions');
+                
+                if (reportRevenue) reportRevenue.textContent = `KES ${(data.total_revenue || 0).toFixed(0)}`;
+                if (reportWeight) reportWeight.textContent = `${(data.total_weight || 0).toFixed(1)} kg`;
+                if (reportTransactions) reportTransactions.textContent = data.total_transactions || 0;
+
+                const salesResponse = await fetch(`${API_URL}/sales/`, {
+                    credentials: 'include'
+                });
+                
+                if (!salesResponse.ok) {
+                    throw new Error(`HTTP error! status: ${salesResponse.status}`);
+                }
+                
+                const sales = await salesResponse.json();
+                
+                const tbody = document.getElementById('recentTransactions');
+                if (tbody) {
+                    tbody.innerHTML = (Array.isArray(sales) ? sales : []).slice(0, 10).map(sale => {
+                        const customerName = sale.customer_name || 'Walk-in';
+                        return `
+                            <tr>
+                                <td>${sale.sold_at ? new Date(sale.sold_at).toLocaleDateString() : '--'}</td>
+                                <td>${sale.meat_cut_name || 'Unknown'}</td>
+                                <td>${customerName}</td>
+                                <td>KES ${parseFloat(sale.total_price || 0).toFixed(2)}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+
+            } catch (error) {
+                console.error('Failed to generate report:', error);
+                showToast('Failed to generate report', 'error');
+            }
+        }
+
+        async function checkHistoricalStock() {
+            const dateInput = document.getElementById('historicalDate')?.value;
+            if (!dateInput) {
+                showToast('Please select a date', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/stock/historical/?date=${dateInput}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch historical data');
+                }
+                
+                const data = await response.json();
+                const resultsDiv = document.getElementById('historicalStockResults');
+                
+                if (!resultsDiv) return;
+                
+                if (!Array.isArray(data.stock_items) || data.stock_items.length === 0) {
+                    resultsDiv.innerHTML = `
+                        <div class="report-result fade-in" style="margin-top: 20px;">
+                            <div class="report-date-header" style="background: linear-gradient(135deg, var(--secondary) 0%, #374151 100%);">
+                                <h3><i class="fas fa-history"></i> Stock on ${new Date(dateInput).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
+                            </div>
+                            <div class="empty-state" style="padding: 40px;">
+                                <i class="fas fa-box-open" style="font-size: 48px; color: var(--border);"></i>
+                                <h3>No Stock Records</h3>
+                                <p>No stock was available on this date.</p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const stockRows = data.stock_items.map(item => `
+                    <tr class="${item.status}">
+                        <td>${item.meat_type_name || 'Unknown'}</td>
+                        <td>${item.meat_cut_name || 'Unknown'}</td>
+                        <td>${item.remaining_on_date.toFixed(2)} kg</td>
+                        <td>${item.days_since_received} days</td>
+                        <td>
+                            <span class="status ${item.status}">
+                                ${item.status === 'fresh' ? 'Fresh' : 'Aged'}
+                                ${item.is_expired ? ' (Expired)' : ''}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
+
+                resultsDiv.innerHTML = `
+                    <div class="report-result fade-in" style="margin-top: 20px;">
+                        <div class="report-date-header" style="background: linear-gradient(135deg, var(--secondary) 0%, #374151 100%);">
+                            <h3><i class="fas fa-history"></i> Stock on ${new Date(dateInput).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h3>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                            <div class="stat-card" style="border-left: 4px solid var(--fresh);">
+                                <div class="stat-label">Fresh Stock</div>
+                                <div class="stat-value" style="color: var(--fresh); font-size: 20px;">${data.fresh_count} items</div>
+                                <div style="font-size: 14px; color: var(--text-muted);">${data.fresh_weight.toFixed(2)} kg</div>
+                            </div>
+                            <div class="stat-card" style="border-left: 4px solid var(--warning);">
+                                <div class="stat-label">Aged Stock</div>
+                                <div class="stat-value" style="color: var(--warning); font-size: 20px;">${data.aged_count} items</div>
+                                <div style="font-size: 14px; color: var(--text-muted);">${data.aged_weight.toFixed(2)} kg</div>
+                            </div>
+                            <div class="stat-card" style="border-left: 4px solid var(--primary);">
+                                <div class="stat-label">Total Items</div>
+                                <div class="stat-value" style="font-size: 20px;">${data.total_items}</div>
+                                <div style="font-size: 14px; color: var(--text-muted);">${data.total_weight.toFixed(2)} kg</div>
+                            </div>
+                        </div>
+
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Cut</th>
+                                        <th>Remaining</th>
+                                        <th>Age</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${stockRows}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                
+                showToast(`Historical stock loaded for ${dateInput}`, 'success');
+                
+            } catch (error) {
+                console.error('Failed to load historical stock:', error);
+                showToast('Failed to load historical stock data', 'error');
+            }
+        }
+
+        async function loadAllAlerts() {
+            try {
+                const response = await fetch(`${API_URL}/alerts/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const alerts = await response.json();
+
+                const container = document.getElementById('allAlertsList');
+                if (!container) return;
+
+                if (!Array.isArray(alerts) || alerts.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-check-circle" style="font-size: 64px; color: var(--success);"></i>
+                            <h3>No Active Alerts</h3>
+                            <p>Your inventory is in good shape!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = alerts.map(alert => `
+                    <div class="alert-item ${alert.severity}">
+                        <div class="alert-icon">
+                            <i class="fas fa-${alert.type === 'low_stock' ? 'box' : 'clock'}"></i>
+                        </div>
+                        <div class="alert-content">
+                            <div class="alert-title">${alert.title}</div>
+                            <div class="alert-message">${alert.message}</div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                ${alert.created_at ? new Date(alert.created_at).toLocaleString() : ''}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load alerts:', error);
+                showToast('Failed to load alerts', 'error');
+            }
+        }
+
+        function markAllRead() {
+            showToast('All alerts marked as read', 'success');
+        }
+
+        function openAddStockModal() {
+            // Ensure meatTypes is loaded and is an array
+            if (!Array.isArray(meatTypes) || meatTypes.length === 0) {
+                loadMeatTypes().then(() => {
+                    if (!Array.isArray(meatTypes) || meatTypes.length === 0) {
+                        showToast('Failed to load meat types. Please try again.', 'error');
+                        return;
+                    }
+                    renderStockModal();
+                });
+                return;
+            }
+            
             renderStockModal();
+        }
+
+        function renderStockModal() {
+            const meatTypeOptions = meatTypes.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+            
+            const modalHtml = `
+                <div id="stockModal" class="modal-overlay" onclick="if(event.target === this) closeModal()">
+                    <div class="modal-content">
+                        <h2 style="margin-bottom: 20px;">Add New Stock</h2>
+                        <form id="addStockForm">
+                            <div class="input-group">
+                                <label>Meat Type</label>
+                                <select id="modalMeatType" onchange="loadModalCuts()" required>
+                                    <option value="">Select type</option>
+                                    ${meatTypeOptions}
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Meat Cut</label>
+                                <select id="modalMeatCut" required>
+                                    <option value="">Select cut</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Weight (kg)</label>
+                                <input type="number" id="modalWeight" step="0.01" min="0.1" required inputmode="decimal">
+                            </div>
+                            <div class="input-group">
+                                <label>Notes (Optional)</label>
+                                <input type="text" id="modalNotes" placeholder="e.g., Supplier name, batch info">
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                                <button type="button" class="btn btn-outline" onclick="closeModal()" style="flex: 1;">Cancel</button>
+                                <button type="submit" class="btn" style="flex: 1;">Add Stock</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            const addStockForm = document.getElementById('addStockForm');
+            if (addStockForm) {
+                addStockForm.addEventListener('submit', handleAddStock);
+            }
+        }
+
+        async function loadModalCuts() {
+            const typeId = document.getElementById('modalMeatType')?.value;
+            if (!typeId) return;
+
+            try {
+                const response = await fetch(`${API_URL}/meat-cuts/${typeId}/`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    console.error('Failed to load cuts:', response.status);
+                    return;
+                }
+                
+                const cuts = await response.json();
+                
+                if (!Array.isArray(cuts)) {
+                    console.error('Invalid cuts data:', cuts);
+                    return;
+                }
+                
+                const select = document.getElementById('modalMeatCut');
+                if (select) {
+                    select.innerHTML = '<option value="">Select cut</option>' +
+                        cuts.map(cut => `<option value="${cut.id}">${cut.name}</option>`).join('');
+                }
+            } catch (error) {
+                showToast('Failed to load cuts', 'error');
+            }
+        }
+
+        async function handleAddStock(e) {
+            e.preventDefault();
+            
+            const meatCutId = document.getElementById('modalMeatCut')?.value;
+            const weight = document.getElementById('modalWeight')?.value;
+            const notes = document.getElementById('modalNotes')?.value || '';
+            
+            if (!meatCutId || !weight) {
+                showToast('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            const formData = {
+                meat_cut_id: parseInt(meatCutId),
+                weight_kg: parseFloat(weight),
+                notes: notes
+            };
+            
+            try {
+                const response = await fetch(`${API_URL}/stock/`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(formData)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    showToast(error.error || 'Failed to add stock', 'error');
+                    return;
+                }
+                
+                showToast('Stock added successfully!', 'success');
+                closeModal();
+                await loadStockByFreshness();
+                await loadDashboardData();
+                
+            } catch (error) {
+                showToast('Network error', 'error');
+            }
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('stockModal');
+            if (modal) modal.remove();
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icon = type === 'success' ? 'check-circle' : 
+                        type === 'error' ? 'exclamation-circle' : 'info-circle';
+            
+            toast.innerHTML = `
+                <i class="fas fa-${icon}"></i>
+                <span>${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function refreshData() {
+            loadDashboardData();
+            showToast('Data refreshed', 'success');
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
         });
-        return;
-    }
-    
-    renderStockModal();
-}
-
-function renderStockModal() {
-    const meatTypeOptions = meatTypes.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
-    
-    const modalHtml = `
-        <div id="stockModal" class="modal-overlay" onclick="if(event.target === this) closeModal()">
-            <div class="modal-content">
-                <h2 style="margin-bottom: 20px;">Add New Stock</h2>
-                <form id="addStockForm">
-                    <div class="input-group">
-                        <label>Meat Type</label>
-                        <select id="modalMeatType" onchange="loadModalCuts()" required>
-                            <option value="">Select type</option>
-                            ${meatTypeOptions}
-                        </select>
-                    </div>
-                    <div class="input-group">
-                        <label>Meat Cut</label>
-                        <select id="modalMeatCut" required>
-                            <option value="">Select cut</option>
-                        </select>
-                    </div>
-                    <div class="input-group">
-                        <label>Weight (kg)</label>
-                        <input type="number" id="modalWeight" step="0.01" min="0.1" required inputmode="decimal">
-                    </div>
-                    <div class="input-group">
-                        <label>Notes (Optional)</label>
-                        <input type="text" id="modalNotes" placeholder="e.g., Supplier name, batch info">
-                    </div>
-                    <div style="display: flex; gap: 10px; margin-top: 20px;">
-                        <button type="button" class="btn btn-outline" onclick="closeModal()" style="flex: 1;">Cancel</button>
-                        <button type="submit" class="btn" style="flex: 1;">Add Stock</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    const addStockForm = document.getElementById('addStockForm');
-    if (addStockForm) {
-        addStockForm.addEventListener('submit', handleAddStock);
-    }
-}
-
-async function loadModalCuts() {
-    const typeId = document.getElementById('modalMeatType')?.value;
-    if (!typeId) return;
-
-    try {
-        const response = await apiFetch(`/meat-cuts/${typeId}/`);
-        
-        if (!response.ok) {
-            console.error('Failed to load cuts:', response.status);
-            return;
-        }
-        
-        const cuts = await response.json();
-        
-        if (!Array.isArray(cuts)) {
-            console.error('Invalid cuts data:', cuts);
-            return;
-        }
-        
-        const select = document.getElementById('modalMeatCut');
-        if (select) {
-            select.innerHTML = '<option value="">Select cut</option>' +
-                cuts.map(cut => `<option value="${cut.id}">${cut.name}</option>`).join('');
-        }
-    } catch (error) {
-        showToast('Failed to load cuts', 'error');
-    }
-}
-
-async function handleAddStock(e) {
-    e.preventDefault();
-    
-    const meatCutId = document.getElementById('modalMeatCut')?.value;
-    const weight = document.getElementById('modalWeight')?.value;
-    const notes = document.getElementById('modalNotes')?.value || '';
-    
-    if (!meatCutId || !weight) {
-        showToast('Please fill in all required fields', 'error');
-        return;
-    }
-    
-    const formData = {
-        meat_cut_id: parseInt(meatCutId),
-        weight_kg: parseFloat(weight),
-        notes: notes
-    };
-    
-    try {
-        const response = await apiFetch('/stock/', {
-            method: 'POST',
-            body: JSON.stringify(formData)
-        });
-        
-        if (!response.ok) {
-            const error = await response.json();
-            showToast(error.error || 'Failed to add stock', 'error');
-            return;
-        }
-        
-        showToast('Stock added successfully!', 'success');
-        closeModal();
-        await loadStockByFreshness();
-        await loadDashboardData();
-        
-    } catch (error) {
-        showToast('Network error', 'error');
-    }
-}
-
-function closeModal() {
-    const modal = document.getElementById('stockModal');
-    if (modal) modal.remove();
-}
-
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
-    
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    const icon = type === 'success' ? 'check-circle' : 
-                type === 'error' ? 'exclamation-circle' : 'info-circle';
-    
-    toast.innerHTML = `
-        <i class="fas fa-${icon}"></i>
-        <span>${message}</span>
-    `;
-    
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateX(100%)';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-function refreshData() {
-    loadDashboardData();
-    showToast('Data refreshed', 'success');
-}
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        closeModal();
-    }
-});
     </script>
 </body>
 </html>
