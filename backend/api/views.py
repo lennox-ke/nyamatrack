@@ -1,3 +1,7 @@
+"""
+API Views for NyamaTrack
+"""
+
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -5,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
+from rest_framework.authtoken.models import Token
 from django.utils import timezone
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -23,7 +28,10 @@ from .serializers import (
 @api_view(['POST', 'GET'])
 @permission_classes([AllowAny])
 def login_view(request):
-    """Login endpoint with debug logging"""
+    """
+    Login endpoint that returns a token for API authentication.
+    Token is required for cross-domain requests (Netlify -> Render).
+    """
     if request.method == 'GET':
         return Response({'detail': 'Login endpoint. Send POST request with username and password.'})
     
@@ -56,14 +64,23 @@ def login_view(request):
     
     if user is not None:
         login(request, user)
+        
+        # Get or create authentication token for API access
+        token, created = Token.objects.get_or_create(user=user)
+        
+        # Log the login
         try:
-            SystemLog.objects.create(user=user, action='LOGIN', 
-                                   description=f'User {username} logged in')
-        except:
-            pass
+            SystemLog.objects.create(
+                user=user, 
+                action='LOGIN', 
+                description=f'User {username} logged in'
+            )
+        except Exception as e:
+            print(f"Log error: {e}")
         
         return Response({
             'success': True,
+            'token': token.key,  # CRITICAL: Frontend stores this for subsequent requests
             'user': {
                 'id': user.id,
                 'username': user.username,
@@ -82,7 +99,10 @@ def login_view(request):
 @api_view(['POST', 'GET'])
 @permission_classes([AllowAny])
 def register_view(request):
-    """User registration endpoint"""
+    """
+    User registration endpoint.
+    Creates user and returns token immediately for auto-login.
+    """
     if request.method == 'GET':
         return Response({'detail': 'Register endpoint. Send POST with username, password, email'})
     
@@ -113,28 +133,46 @@ def register_view(request):
             'error': 'Password must be at least 6 characters'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    if User.objects.filter(username=username).exists():
+    # Case-insensitive username check
+    if User.objects.filter(username__iexact=username).exists():
         return Response({
             'success': False,
             'error': 'Username already exists'
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
+        # Create user with properly hashed password
         user = User.objects.create_user(
             username=username,
             email=email,
             password=password
         )
         
+        # Create token for immediate API access
+        token = Token.objects.create(user=user)
+        
+        # Log the user in (for session-based admin access)
         login(request, user)
+        
+        # Log the registration
+        try:
+            SystemLog.objects.create(
+                user=user,
+                action='REGISTER',
+                description=f'New user {username} registered'
+            )
+        except Exception as e:
+            print(f"Log error: {e}")
         
         return Response({
             'success': True,
+            'token': token.key,  # CRITICAL: Return token for immediate API access
             'message': 'User created successfully',
             'user': {
                 'id': user.id,
                 'username': user.username,
-                'email': user.email
+                'email': user.email,
+                'is_staff': user.is_staff
             }
         })
     except Exception as e:
@@ -149,18 +187,31 @@ def register_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_view(request):
+    """Logout endpoint - invalidates token on frontend, session on backend."""
     try:
-        SystemLog.objects.create(user=request.user, action='LOGOUT', 
-                               description=f'User {request.user.username} logged out')
-    except:
-        pass
+        # Delete token to invalidate API access
+        Token.objects.filter(user=request.user).delete()
+        
+        # Log the logout
+        try:
+            SystemLog.objects.create(
+                user=request.user, 
+                action='LOGOUT', 
+                description=f'User {request.user.username} logged out'
+            )
+        except Exception as e:
+            print(f"Log error: {e}")
+    except Exception as e:
+        print(f"Token deletion error: {e}")
+    
     logout(request)
-    return Response({'success': True})
+    return Response({'success': True, 'message': 'Logged out successfully'})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def current_user(request):
+    """Get current authenticated user details."""
     user = request.user
     return Response({
         'id': user.id,
@@ -173,7 +224,7 @@ def current_user(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_data(request):
-    """Dashboard data with accurate alert counting"""
+    """Dashboard data with accurate alert counting."""
     # Current stock totals by meat type
     stock_data = []
     for meat_type in MeatType.objects.all():
@@ -203,7 +254,7 @@ def dashboard_data(request):
     total_revenue = sum((s.total_price for s in today_sales), Decimal('0'))
     total_weight_sold = sum((s.weight_sold for s in today_sales), Decimal('0'))
     
-    # FIXED: Accurate alert counting - count ALL alerts, not just top 5
+    # Alert counting
     alerts = []
     
     # Low stock alerts
@@ -217,7 +268,7 @@ def dashboard_data(request):
                 'severity': 'warning'
             })
     
-    # Expiring soon - include ALL expiring items, not just top 5
+    # Expiring soon
     expiring = Stock.objects.filter(
         is_active=True,
         expiry_date__lte=timezone.now() + timedelta(days=2)
@@ -230,7 +281,6 @@ def dashboard_data(request):
             'severity': 'danger' if days_left <= 0 else 'warning'
         })
     
-    # Return all alerts - frontend will display accurate count
     return Response({
         'stock_summary': stock_data,
         'today_sales': {
@@ -238,13 +288,14 @@ def dashboard_data(request):
             'revenue': float(total_revenue),
             'weight': float(total_weight_sold)
         },
-        'alerts': alerts  # FIXED: Return all alerts, not limited to 5
+        'alerts': alerts
     })
 
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def stock_list_create(request):
+    """List all stock or create new stock entry."""
     if request.method == 'GET':
         stock = Stock.objects.filter(is_active=True).order_by('-received_date')
         serializer = StockSerializer(stock, many=True)
@@ -292,6 +343,7 @@ def stock_list_create(request):
                 notes=data.get('notes', '')
             )
             
+            # Log the action
             try:
                 SystemLog.objects.create(
                     user=request.user,
@@ -300,7 +352,6 @@ def stock_list_create(request):
                 )
             except Exception as e:
                 print(f"Log error: {e}")
-                pass
             
             return Response(StockSerializer(stock).data, status=status.HTTP_201_CREATED)
             
@@ -320,6 +371,7 @@ def stock_list_create(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def stock_detail(request, pk):
+    """Get, update or delete specific stock item."""
     try:
         stock = Stock.objects.get(pk=pk)
     except Stock.DoesNotExist:
@@ -334,14 +386,20 @@ def stock_detail(request, pk):
             if weight_kg is not None:
                 weight_kg = float(weight_kg)
                 if weight_kg <= 0:
-                    return Response({'error': 'Weight must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response(
+                        {'error': 'Weight must be greater than 0'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
                 stock.weight_kg = weight_kg
             
             stock.notes = request.data.get('notes', stock.notes)
             stock.save()
             return Response(StockSerializer(stock).data)
         except ValueError:
-            return Response({'error': 'Invalid weight format'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Invalid weight format'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
     
     elif request.method == 'DELETE':
         stock.is_active = False
@@ -349,11 +407,10 @@ def stock_detail(request, pk):
         return Response({'success': True})
 
 
-# NEW FEATURE 1: Fresh vs Expired Stock Separation
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def stock_by_freshness(request):
-    """Separate fresh stock (≤3 days) from expired (>3 days)"""
+    """Separate fresh stock (≤3 days) from expired (>3 days)."""
     now = timezone.now()
     three_days_ago = now - timedelta(days=3)
     
@@ -385,6 +442,7 @@ def stock_by_freshness(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def expiring_stock(request):
+    """Get stock expiring within 2 days."""
     expiring = Stock.objects.filter(
         is_active=True,
         expiry_date__lte=timezone.now() + timedelta(days=2)
@@ -395,8 +453,13 @@ def expiring_stock(request):
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def sales_list_create(request):
+    """List recent sales or create new sale."""
     if request.method == 'GET':
-        sales = Sale.objects.select_related('stock_item', 'stock_item__meat_cut', 'sold_by').all().order_by('-sold_at')[:50]
+        sales = Sale.objects.select_related(
+            'stock_item', 
+            'stock_item__meat_cut', 
+            'sold_by'
+        ).all().order_by('-sold_at')[:50]
         serializer = SaleSerializer(sales, many=True)
         return Response(serializer.data)
     
@@ -426,14 +489,26 @@ def sales_list_create(request):
             
             # Validate positive numbers
             if weight_sold <= 0:
-                return Response({'error': 'Weight sold must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'error': 'Weight sold must be greater than 0'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             if price_per_kg <= 0:
-                return Response({'error': 'Price per kg must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'error': 'Price per kg must be greater than 0'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             try:
-                stock = Stock.objects.select_related('meat_cut').get(id=stock_id, is_active=True)
+                stock = Stock.objects.select_related('meat_cut').get(
+                    id=stock_id, 
+                    is_active=True
+                )
             except Stock.DoesNotExist:
-                return Response({'error': 'Stock not found or inactive'}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {'error': 'Stock not found or inactive'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
             
             if stock.weight_kg < weight_sold:
                 return Response(
@@ -447,7 +522,7 @@ def sales_list_create(request):
                 weight_sold=weight_sold,
                 price_per_kg=price_per_kg,
                 sold_by=request.user,
-                customer_name=data.get('customer_name', '')  # FIXED: Include customer_name
+                customer_name=data.get('customer_name', '')
             )
             
             # Update stock
@@ -456,14 +531,15 @@ def sales_list_create(request):
                 stock.is_active = False
             stock.save()
             
+            # Log the sale
             try:
                 SystemLog.objects.create(
                     user=request.user,
                     action='SALE',
                     description=f"Sold {weight_sold}kg of {stock.meat_cut.name} for KES {sale.total_price}"
                 )
-            except:
-                pass
+            except Exception as e:
+                print(f"Log error: {e}")
             
             # Return serialized sale data
             serializer = SaleSerializer(sale)
@@ -480,7 +556,7 @@ def sales_list_create(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def today_sales(request):
-    """Get today's sales with proper date filtering"""
+    """Get today's sales with proper date filtering."""
     today = timezone.now().date()
     
     sales = Sale.objects.select_related(
@@ -495,11 +571,10 @@ def today_sales(request):
     return Response(serializer.data)
 
 
-# NEW FEATURE 2: Specific Date Sales Report
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sales_by_date(request, year, month, day):
-    """Get sales for specific date"""
+    """Get sales for specific date."""
     try:
         target_date = datetime(year, month, day).date()
     except ValueError:
@@ -534,27 +609,36 @@ def sales_by_date(request, year, month, day):
     })
 
 
-# NEW FEATURE 2: Sales by Date Range
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sales_by_date_range(request):
-    """Get sales between start_date and end_date"""
+    """Get sales between start_date and end_date."""
     start_date_str = request.GET.get('start_date')
     end_date_str = request.GET.get('end_date')
     
     if not start_date_str or not end_date_str:
-        return Response({'error': 'start_date and end_date required (YYYY-MM-DD)'}, status=400)
+        return Response(
+            {'error': 'start_date and end_date required (YYYY-MM-DD)'}, 
+            status=400
+        )
     
     try:
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
     except ValueError:
-        return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        return Response(
+            {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+            status=400
+        )
     
     sales = Sale.objects.filter(
         sold_at__date__gte=start_date,
         sold_at__date__lte=end_date
-    ).select_related('stock_item', 'stock_item__meat_cut', 'sold_by').order_by('-sold_at')
+    ).select_related(
+        'stock_item', 
+        'stock_item__meat_cut', 
+        'sold_by'
+    ).order_by('-sold_at')
     
     # Group by date
     daily_data = {}
@@ -580,12 +664,19 @@ def sales_by_date_range(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sales_report(request):
+    """Generate sales report for last N days."""
     try:
         days = int(request.GET.get('days', 7))
         if days <= 0 or days > 365:
-            return Response({'error': 'Days must be between 1 and 365'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Days must be between 1 and 365'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
     except ValueError:
-        return Response({'error': 'Invalid days parameter'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'error': 'Invalid days parameter'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
     from_date = timezone.now() - timedelta(days=days)
     
@@ -613,6 +704,7 @@ def sales_report(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def meat_types_list(request):
+    """List all meat types."""
     types = MeatType.objects.all()
     serializer = MeatTypeSerializer(types, many=True)
     return Response(serializer.data)
@@ -621,6 +713,7 @@ def meat_types_list(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def meat_cuts_list(request):
+    """List all meat cuts."""
     cuts = MeatCut.objects.select_related('meat_type').all()
     serializer = MeatCutSerializer(cuts, many=True)
     return Response(serializer.data)
@@ -629,10 +722,14 @@ def meat_cuts_list(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def meat_cuts_by_type(request, meat_type_id):
+    """Get meat cuts for specific meat type."""
     try:
         meat_type = MeatType.objects.get(id=meat_type_id)
     except MeatType.DoesNotExist:
-        return Response({'error': 'Meat type not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {'error': 'Meat type not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
     
     cuts = MeatCut.objects.filter(meat_type=meat_type)
     serializer = MeatCutSerializer(cuts, many=True)
@@ -642,7 +739,7 @@ def meat_cuts_by_type(request, meat_type_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def alerts_list(request):
-    """Get all active alerts with accurate counting"""
+    """Get all active alerts with accurate counting."""
     alerts = []
     
     # Low stock alerts
@@ -659,7 +756,7 @@ def alerts_list(request):
                 'severity': 'warning'
             })
     
-    # Expiring - include ALL expiring items
+    # Expiring stock
     expiring = Stock.objects.filter(
         is_active=True,
         expiry_date__lte=timezone.now() + timedelta(days=2)
@@ -681,6 +778,7 @@ def alerts_list(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def low_stock_alerts(request):
+    """Get low stock alerts only."""
     alerts = []
     for alert in LowStockAlert.objects.filter(is_active=True):
         current_stock = Stock.objects.filter(meat_cut=alert.meat_cut, is_active=True)
@@ -694,25 +792,26 @@ def low_stock_alerts(request):
     return Response(alerts)
 
 
-# NEW FEATURE 3: Historical Stock Status
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def stock_historical(request):
-    """View stock status as it was on a specific date"""
+    """View stock status as it was on a specific date."""
     date_str = request.GET.get('date')
     if not date_str:
-        return Response({'error': 'Date parameter required (YYYY-MM-DD)'}, status=400)
+        return Response(
+            {'error': 'Date parameter required (YYYY-MM-DD)'}, 
+            status=400
+        )
     
     try:
         target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
     except ValueError:
-        return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        return Response(
+            {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+            status=400
+        )
     
     # Stock that was added on or before that date
-    # We need to calculate what stock existed on that date by:
-    # 1. Finding all stock items added on or before that date
-    # 2. Subtracting sales that occurred before that date
-    
     stock_added = Stock.objects.filter(
         received_date__date__lte=target_date
     ).select_related('meat_cut', 'meat_cut__meat_type')
@@ -768,8 +867,12 @@ def stock_historical(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def system_logs(request):
+    """Get system logs (admin only)."""
     if not request.user.is_staff:
-        return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            {'error': 'Unauthorized'}, 
+            status=status.HTTP_403_FORBIDDEN
+        )
     
     logs = SystemLog.objects.all().order_by('-timestamp')[:100]
     serializer = SystemLogSerializer(logs, many=True)
